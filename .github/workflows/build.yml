@@ -16,7 +16,7 @@ jobs:
       # annotations, which can be read through the API without downloading the job log.
       - name: Configure
         run: |
-          cmake --preset vs2022-x64 -DDINGOSDK_CARGO=NOTFOUND *>&1 | Tee-Object -FilePath configure.log
+          cmake --preset vs2022-x64 "-DDINGOSDK_CARGO=" *>&1 | Tee-Object -FilePath configure.log
           if ($LASTEXITCODE -ne 0) { ./.github/report.ps1 configure.log Configure; exit 1 }
       - name: Build
         run: |
