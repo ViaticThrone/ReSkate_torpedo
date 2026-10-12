@@ -32,6 +32,12 @@ void set_min_speed(float metres_per_second) noexcept;
 float turn_rate() noexcept;
 float range() noexcept;
 float min_speed() noexcept;
+// The push towards the target (m/s per second, 0 to 200) that flies a torpedo with no thumbstick
+// input, and the speed (5 to 300 m/s) above which it stops adding.
+void set_thrust(float metres_per_second_squared) noexcept;
+void set_max_speed(float metres_per_second) noexcept;
+float thrust() noexcept;
+float max_speed() noexcept;
 // Home on this player (by name, case-insensitive; part of a name is enough when only one player
 // fits), at any distance; "" or "nearest" goes back to whoever is nearest. Returns the line to show.
 // Client thread. A chosen player who is not shown (out of reach, left) is simply not steered at.

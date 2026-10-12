@@ -53,7 +53,7 @@ void register_torpedo_homing_commands(Commands &registry) {
     };
     registry.add(std::move(range));
 
-    auto speed = variable("torpedohoming speed", "Metres a second: slower than this, nothing steers (0 to 100, default 4); keep it low, a torpedo starts at 6 to 10",
+    auto speed = variable("torpedohoming speed", "Metres a second: slower than this, nothing steers (0 to 100, default 4): the turning of the velocity you already have only, the push works at any speed",
                           Group::gameplay, argument("m/s", Type::number));
     speed.inspect = [unavailable](const Model &) {
         return State{torpedo_homing::available(), std::to_string(static_cast<int>(torpedo_homing::min_speed())), unavailable, {}, false};
@@ -62,6 +62,27 @@ void register_torpedo_homing_commands(Commands &registry) {
         torpedo_homing::set_min_speed(static_cast<float>(std::get<double>(args[0])));
     };
     registry.add(std::move(speed));
+
+    auto thrust = variable("torpedohoming thrust", "How hard the torpedo is pushed at the target, in m/s per second (0 to 200, default 30): "
+                           "what flies it with no thumbstick, up or down as the target lies",
+                           Group::gameplay, argument("m/s2", Type::number));
+    thrust.inspect = [unavailable](const Model &) {
+        return State{torpedo_homing::available(), std::to_string(static_cast<int>(torpedo_homing::thrust())), unavailable, {}, false};
+    };
+    thrust.run = [](const Model &, const Values &args, const Output &) {
+        torpedo_homing::set_thrust(static_cast<float>(std::get<double>(args[0])));
+    };
+    registry.add(std::move(thrust));
+
+    auto top = variable("torpedohoming maxspeed", "The speed in m/s (5 to 300, default 45) above which the push stops adding speed",
+                        Group::gameplay, argument("m/s", Type::number));
+    top.inspect = [unavailable](const Model &) {
+        return State{torpedo_homing::available(), std::to_string(static_cast<int>(torpedo_homing::max_speed())), unavailable, {}, false};
+    };
+    top.run = [](const Model &, const Values &args, const Output &) {
+        torpedo_homing::set_max_speed(static_cast<float>(std::get<double>(args[0])));
+    };
+    registry.add(std::move(top));
 
     auto learn = variable("torpedohoming learn", "Log the air state each dive, torpedo or glide lands in, to tell them apart",
                           Group::gameplay, argument("0|1", Type::boolean));

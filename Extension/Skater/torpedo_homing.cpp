@@ -31,7 +31,7 @@ constexpr int torpedo_substate = 12;
 
 struct Config {
     std::atomic<bool> on{}, learn{};
-    std::atomic<float> turn{120.0f}, range{60.0f}, min_speed{4.0f};
+    std::atomic<float> turn{120.0f}, range{60.0f}, min_speed{4.0f}, thrust{30.0f}, max_speed{45.0f};
 };
 Config &config() {
     static Config value;
@@ -53,16 +53,33 @@ struct Seen {
                in_the_air == o.in_the_air && wipeout == o.wipeout;
     }
 };
+// A sample of the torpedo being steered, every quarter second while `learn` is on, so the log shows
+// whether the aim closes in: the distance, the angle between the heading and the target, the speed.
+struct Trace {
+    bool target{};
+    float distance{}, angle_deg{}, speed{}, up{}; // up: the target's height over the heading, -1 to 1
+    std::uint64_t torpedo_steps{}, no_target_steps{}, steered_steps{};
+};
 struct Live {
     SRWLOCK lock = SRWLOCK_INIT;
     Seen seen;
     std::uint64_t seq{}, logged{};
+    Trace trace;
+    std::uint64_t trace_seq{}, trace_logged{};
 };
 Live &live() {
     static Live value;
     return value;
 }
 std::atomic<std::uint64_t> &steered_steps() {
+    static std::atomic<std::uint64_t> value{};
+    return value;
+}
+std::atomic<std::uint64_t> &torpedo_steps() {
+    static std::atomic<std::uint64_t> value{};
+    return value;
+}
+std::atomic<std::uint64_t> &no_target_steps() {
     static std::atomic<std::uint64_t> value{};
     return value;
 }
@@ -193,45 +210,86 @@ void on_step(const NoBailSkater &skater, float seconds, bool wipeout) noexcept {
         }
         ReleaseSRWLockExclusive(&l.lock);
     }
-    if (!on || !have_bodies || wipeout || substate != torpedo_substate || !flags.in_the_air ||
+    // In the air, or just was: the flag flickers while the torpedo is still diving.
+    static std::atomic<ULONGLONG> last_air{};
+    const ULONGLONG tick = GetTickCount64();
+    if (substate == torpedo_substate && flags.in_the_air) last_air.store(tick, std::memory_order_relaxed);
+    const bool airborne = tick - last_air.load(std::memory_order_relaxed) <= 300;
+    if (!on || !have_bodies || wipeout || substate != torpedo_substate || !airborne ||
         !std::isfinite(seconds) || seconds <= 0 || seconds > 0.1f)
         return;
-    if (speed < cfg.min_speed.load(std::memory_order_relaxed)) return;
+    torpedo_steps().fetch_add(1, std::memory_order_relaxed);
 
     Vec3 me{}, target{};
     float distance{};
-    if (!targets().nearest(cfg.range.load(std::memory_order_relaxed), me, target, &distance)) {
+    const bool have_target = targets().nearest(cfg.range.load(std::memory_order_relaxed), me, target, &distance);
+    if (!have_target) {
+        no_target_steps().fetch_add(1, std::memory_order_relaxed);
         last_distance().store(-1.0f, std::memory_order_relaxed);
-        return;
     }
-    last_distance().store(distance, std::memory_order_relaxed);
-    target[1] += aim_height;
-    Vec3 to{target[0] - me[0], target[1] - me[1], target[2] - me[2]};
-    const float gap = length(to); // not `far`: Windows.h defines that
-    if (!std::isfinite(gap) || gap < arrive_distance) return;
-    for (auto &a : to) a /= gap;
-    Vec3 heading{mean[0] / speed, mean[1] / speed, mean[2] / speed};
-    const float cosine = std::clamp(dot(heading, to), -1.0f, 1.0f);
-    const float angle = std::acos(cosine);
-    if (angle < 0.002f || angle > cone) return;
-    Vec3 axis = cross(heading, to);
-    const float axis_length = length(axis);
-    if (axis_length < 1e-5f) return;
-    for (auto &a : axis) a /= axis_length;
-    const float turn = std::min(angle, cfg.turn.load(std::memory_order_relaxed) * pi / 180.0f * seconds);
-
-    // Every body turns by the same rotation, so the body keeps its shape and its speed.
-    std::array<Vec3, last_body + 1> turned{};
-    for (std::size_t i = first_body; i <= last_body; ++i) {
-        Vec3 v{};
-        if (!read_velocity(bodies[i], v)) return;
-        turned[i] = rotate(v, axis, turn);
-        if (!finite(turned[i])) return;
-    }
+    float angle = 0, up = 0;
     bool wrote = false;
-    for (std::size_t i = first_body; i <= last_body; ++i)
-        if (write_velocity(bodies[i], turned[i])) wrote = true;
-    if (wrote) steered_steps().fetch_add(1, std::memory_order_relaxed);
+    if (have_target) {
+        last_distance().store(distance, std::memory_order_relaxed);
+        target[1] += aim_height;
+        Vec3 to{target[0] - me[0], target[1] - me[1], target[2] - me[2]};
+        const float gap = length(to); // not `far`: Windows.h defines that
+        if (std::isfinite(gap) && gap >= arrive_distance) {
+            for (auto &a : to) a /= gap;
+            up = to[1];
+            // 1. Turn the velocity the skater has towards the target, keeping its speed (needs some speed
+            //    to have a direction, and a target not far behind).
+            Vec3 axis{};
+            float turn = 0;
+            if (speed >= cfg.min_speed.load(std::memory_order_relaxed) && speed > 0.1f) {
+                const Vec3 heading{mean[0] / speed, mean[1] / speed, mean[2] / speed};
+                angle = std::acos(std::clamp(dot(heading, to), -1.0f, 1.0f));
+                axis = cross(heading, to);
+                const float axis_length = length(axis);
+                if (angle >= 0.002f && angle <= cone && axis_length >= 1e-5f) {
+                    for (auto &a : axis) a /= axis_length;
+                    turn = std::min(angle, cfg.turn.load(std::memory_order_relaxed) * pi / 180.0f * seconds);
+                }
+            }
+            // 2. Push the skater towards the target, up or down as the target lies, so a torpedo that
+            //    is only dropping (no thumbstick) still flies at it. Stops adding at `max_speed`.
+            const float push = speed < cfg.max_speed.load(std::memory_order_relaxed)
+                                     ? cfg.thrust.load(std::memory_order_relaxed) * seconds
+                                     : 0.0f;
+            if (turn > 0 || push > 0) {
+                // Every body gets the same change, so the body keeps its shape.
+                std::array<Vec3, last_body + 1> next{};
+                bool ok = true;
+                for (std::size_t i = first_body; i <= last_body && ok; ++i) {
+                    Vec3 v{};
+                    ok = read_velocity(bodies[i], v);
+                    if (!ok) break;
+                    if (turn > 0) v = rotate(v, axis, turn);
+                    for (std::size_t a = 0; a < 3; ++a) v[a] += to[a] * push;
+                    ok = finite(v);
+                    next[i] = v;
+                }
+                if (ok) {
+                    for (std::size_t i = first_body; i <= last_body; ++i)
+                        if (write_velocity(bodies[i], next[i])) wrote = true;
+                    if (wrote) steered_steps().fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+        }
+    }
+    if (learn) {
+        static std::atomic<ULONGLONG> last_trace{};
+        if (tick - last_trace.load(std::memory_order_relaxed) >= 250) {
+            last_trace.store(tick, std::memory_order_relaxed);
+            auto &l = live();
+            AcquireSRWLockExclusive(&l.lock);
+            l.trace = {have_target, distance, angle * 180.0f / pi, speed, up,
+                       torpedo_steps().load(std::memory_order_relaxed), no_target_steps().load(std::memory_order_relaxed),
+                       steered_steps().load(std::memory_order_relaxed)};
+            ++l.trace_seq;
+            ReleaseSRWLockExclusive(&l.lock);
+        }
+    }
 }
 }
 
@@ -262,6 +320,14 @@ void set_min_speed(float v) noexcept {
 float turn_rate() noexcept { return config().turn.load(std::memory_order_relaxed); }
 float range() noexcept { return config().range.load(std::memory_order_relaxed); }
 float min_speed() noexcept { return config().min_speed.load(std::memory_order_relaxed); }
+void set_thrust(float v) noexcept {
+    if (std::isfinite(v)) config().thrust.store(std::clamp(v, 0.0f, 200.0f), std::memory_order_relaxed);
+}
+void set_max_speed(float v) noexcept {
+    if (std::isfinite(v)) config().max_speed.store(std::clamp(v, 5.0f, 300.0f), std::memory_order_relaxed);
+}
+float thrust() noexcept { return config().thrust.load(std::memory_order_relaxed); }
+float max_speed() noexcept { return config().max_speed.load(std::memory_order_relaxed); }
 std::string set_target(std::string_view name) {
     std::string text(name);
     while (!text.empty() && text.front() == ' ') text.erase(text.begin());
@@ -299,6 +365,21 @@ void on_client_tick() noexcept {
         const bool fresh = seq != l.logged;
         l.logged = seq;
         ReleaseSRWLockExclusive(&l.lock);
+        Trace trace;
+        std::uint64_t trace_seq{};
+        AcquireSRWLockExclusive(&l.lock);
+        trace = l.trace;
+        trace_seq = l.trace_seq;
+        const bool trace_fresh = trace_seq != l.trace_logged;
+        l.trace_logged = trace_seq;
+        ReleaseSRWLockExclusive(&l.lock);
+        if (trace_fresh)
+            logging::log(logging::Level::info, logging::Channel::skater,
+                         "Torpedo Homing steer: target {}, {:.1f} m away, {:.0f} deg off the heading, target {:.2f} up, speed {:.1f} m/s; "
+                         "torpedo steps {}, no target {}, steered {}",
+                         trace.target ? "yes" : "NONE", static_cast<double>(trace.distance), static_cast<double>(trace.angle_deg),
+                         static_cast<double>(trace.up), static_cast<double>(trace.speed), trace.torpedo_steps,
+                         trace.no_target_steps, trace.steered_steps);
         if (fresh)
             logging::log(logging::Level::info, logging::Channel::skater,
                          "Torpedo Homing learn: physics state {}, substate {} ({}), ragdoll {}, in the air {}, bail {}, speed {:.1f} m/s",
@@ -310,9 +391,12 @@ void on_client_tick() noexcept {
 
 std::string status() {
     const float d = last_distance().load(std::memory_order_relaxed);
-    return std::format("{}; target {}; turn {:.0f} deg/s, range {:.0f} m, min speed {:.0f} m/s; steered {} steps; distance {}",
-                       enabled() ? "on" : "off", target_name(), static_cast<double>(turn_rate()), static_cast<double>(range()),
-                       static_cast<double>(min_speed()), steered_steps().load(std::memory_order_relaxed),
+    return std::format("{}; target {}; thrust {:.0f} m/s2 up to {:.0f} m/s; turn {:.0f} deg/s, range {:.0f} m, turn from {:.0f} m/s; "
+                       "torpedo steps {}, no target {}, steered {}; distance {}",
+                       enabled() ? "on" : "off", target_name(), static_cast<double>(thrust()), static_cast<double>(max_speed()),
+                       static_cast<double>(turn_rate()), static_cast<double>(range()), static_cast<double>(min_speed()),
+                       torpedo_steps().load(std::memory_order_relaxed), no_target_steps().load(std::memory_order_relaxed),
+                       steered_steps().load(std::memory_order_relaxed),
                        d >= 0 ? std::format("{:.1f} m", static_cast<double>(d)) : std::string("none in range"));
 }
 }
