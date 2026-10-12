@@ -24,10 +24,14 @@ constexpr float pi = 3.14159265358979f;
 constexpr float aim_height = 1.0f;        // aim at the chest, not the feet
 constexpr float arrive_distance = 1.5f;   // close enough: stop steering and let the hit happen
 constexpr float cone = 100.0f * pi / 180; // nothing steers towards a player further behind than this
+// The ragdoll substate the torpedo trick runs in, as `torpedohoming learn 1` logged it: the third
+// ragdoll state (substate 12), in the air. After the landing or a hit the skater moves to substate 10
+// (and 11), the bail itself, which is never steered.
+constexpr int torpedo_substate = 12;
 
 struct Config {
     std::atomic<bool> on{}, learn{};
-    std::atomic<float> turn{120.0f}, range{60.0f}, min_speed{10.0f};
+    std::atomic<float> turn{120.0f}, range{60.0f}, min_speed{4.0f};
 };
 Config &config() {
     static Config value;
@@ -189,7 +193,9 @@ void on_step(const NoBailSkater &skater, float seconds, bool wipeout) noexcept {
         }
         ReleaseSRWLockExclusive(&l.lock);
     }
-    if (!on || !have_bodies || wipeout || !std::isfinite(seconds) || seconds <= 0 || seconds > 0.1f) return;
+    if (!on || !have_bodies || wipeout || substate != torpedo_substate || !flags.in_the_air ||
+        !std::isfinite(seconds) || seconds <= 0 || seconds > 0.1f)
+        return;
     if (speed < cfg.min_speed.load(std::memory_order_relaxed)) return;
 
     Vec3 me{}, target{};

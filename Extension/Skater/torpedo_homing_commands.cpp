@@ -53,7 +53,7 @@ void register_torpedo_homing_commands(Commands &registry) {
     };
     registry.add(std::move(range));
 
-    auto speed = variable("torpedohoming speed", "Metres a second: slower than this, nothing steers (0 to 100). Raise it so a slow glide does not home",
+    auto speed = variable("torpedohoming speed", "Metres a second: slower than this, nothing steers (0 to 100, default 4); keep it low, a torpedo starts at 6 to 10",
                           Group::gameplay, argument("m/s", Type::number));
     speed.inspect = [unavailable](const Model &) {
         return State{torpedo_homing::available(), std::to_string(static_cast<int>(torpedo_homing::min_speed())), unavailable, {}, false};

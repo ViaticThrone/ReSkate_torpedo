@@ -17,7 +17,7 @@
 //
 // Which air state is "the torpedo" is not named anywhere in the game data this SDK reads, so
 // `torpedohoming learn 1` logs the state each change lands in; the gate (a ragdoll-motion
-// off-board state, not a bail, fast enough) is the first guess.
+// off-board state, not a bail, fast enough) is `torpedo_substate` (12).
 namespace dingosdk::torpedo_homing {
 // Requires the validated build and No Bail started.
 bool start(std::uintptr_t image_base) noexcept;
