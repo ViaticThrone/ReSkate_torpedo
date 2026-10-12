@@ -61,6 +61,7 @@ struct Protection {
     SRWLOCK lock = SRWLOCK_INIT;
     Lease lease;
     std::atomic<NoBailStepObserver> step_observer{};
+    std::atomic<NoBailStepObserver> motion_observer{};
 };
 Protection& protection() { static auto* value = new Protection; return *value; }
 struct StateWatch {
@@ -234,10 +235,15 @@ void skeleton_response(std::uintptr_t rig, float seconds, bool wipeout) {
     // The state post-update can raise another request after the selector ran.
     // Filter at this consumer, then let native constraints and recovery run.
     if (filter_requests(rig, &Owner::rig)) wipeout = false;
-    if (const auto observer = protection().step_observer.load(std::memory_order_acquire)) {
+    const auto observer = protection().step_observer.load(std::memory_order_acquire);
+    const auto motion = protection().motion_observer.load(std::memory_order_acquire);
+    if (observer || motion) {
         LastError error;
         NoBailSkater skater;
-        if (published_skater(rig, skater)) observer(skater, seconds, wipeout);
+        if (published_skater(rig, skater)) {
+            if (observer) observer(skater, seconds, wipeout);
+            if (motion) motion(skater, seconds, wipeout);
+        }
     }
     protection().skeleton_original(rig, seconds, wipeout);
 }
@@ -419,6 +425,9 @@ void clear_no_bail() noexcept {
 bool no_bail_skater(NoBailSkater& skater) noexcept { return published_skater(0, skater); }
 void set_no_bail_step_observer(NoBailStepObserver observer) noexcept {
     protection().step_observer.store(observer, std::memory_order_release);
+}
+void set_no_bail_motion_observer(NoBailStepObserver observer) noexcept {
+    protection().motion_observer.store(observer, std::memory_order_release);
 }
 void watch_physics_state(std::uintptr_t client, std::uintptr_t entity) noexcept {
     auto& w = state_watch();

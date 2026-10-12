@@ -39,4 +39,7 @@ bool no_bail_skater(NoBailSkater& skater) noexcept;
 // One observer, nullptr for none; it runs on the physics thread.
 using NoBailStepObserver = void (*)(const NoBailSkater& skater, float seconds, bool wipeout) noexcept;
 void set_no_bail_step_observer(NoBailStepObserver observer) noexcept;
+// A second observer, independent of the first (Torpedo Homing writes velocity from it; Hall of Meat
+// only reads). It runs right after the first, on the same thread, in the same step.
+void set_no_bail_motion_observer(NoBailStepObserver observer) noexcept;
 }

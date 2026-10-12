@@ -1,0 +1,26 @@
+name: build
+on:
+  push:
+    branches: [torpedo-homing]
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake --preset vs2022-x64
+      - name: Build
+        run: cmake --build --preset release --parallel 4
+      - name: Collect
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          foreach ($f in 'ReSkateLauncher.exe','ReSkate.dll') {
+            Copy-Item "build/vs2022-x64/Release/$f" out/ -ErrorAction Stop
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reskate-torpedo
+          path: out/*

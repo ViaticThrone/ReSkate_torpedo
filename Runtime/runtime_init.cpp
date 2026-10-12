@@ -26,6 +26,7 @@
 #include "Extension/Boot/offline_boot.h"
 #include "Extension/HallOfMeat/hall_of_meat.h"
 #include "Extension/RoadRash/road_rash.h"
+#include "Extension/Skater/torpedo_homing.h"
 #include "Extension/BoardBreak/board_break.h"
 #include "Extension/Skater/camera_observer.h"
 #include "Extension/Progression/entitlement_request_hook.h"
@@ -433,6 +434,8 @@ extern "C" __declspec(dllexport) BOOL WINAPI DingoSDKDebugInitialize() {
         (void)dingosdk::start_no_bail(r.base);
         const bool meat = dingosdk::hall_of_meat::start(r.base);
         record("{\"event\":\"hall_of_meat_initialized\",\"active\":" + std::string(meat ? "true" : "false") + "}");
+        const bool homing = dingosdk::torpedo_homing::start(r.base);
+        record("{\"event\":\"torpedo_homing_initialized\",\"active\":" + std::string(homing ? "true" : "false") + "}");
         const bool rash = dingosdk::road_rash::start(r.base);
         record("{\"event\":\"road_rash_initialized\",\"active\":" + std::string(rash ? "true" : "false") + "}");
         const bool board_break = dingosdk::board_break::start(r.base);

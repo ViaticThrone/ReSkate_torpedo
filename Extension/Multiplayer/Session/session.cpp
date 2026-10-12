@@ -18,6 +18,7 @@
 #include "Extension/Multiplayer/Remote/native_vfx.h"
 #include "Extension/Skater/client_source_spawn.h"
 #include "Extension/Skater/no_bail.h"
+#include "Extension/Skater/torpedo_homing_targets.h"
 #include "Extension/Skater/physics_tuning.h"
 #include "Extension/Multiplayer/Remote/remote_collision.h"
 #include "Engine/Core/Log/logging.h"
@@ -617,6 +618,8 @@ void render(Session &s, std::uintptr_t client, const NativeFrame &local, std::ui
                 // Solid for the local skater within reach, when both have party collision on.
                 // Local Echo shows your own skater: never solid.
                 const auto &at = p.render_pose.root.position, &me = local.pose.root.position;
+                // Torpedo Homing's targets: every other player shown, and where the local skater is.
+                if (p.visible && !hidden && s.mode != Mode::echo) torpedo_homing::targets().publish(p.member.id, p.member.name, at, me);
                 const float reach2 = (at[0] - me[0]) * (at[0] - me[0]) + (at[1] - me[1]) * (at[1] - me[1]) +
                                      (at[2] - me[2]) * (at[2] - me[2]);
                 update_remote_collision(s.base, local.context, p.render_pose,

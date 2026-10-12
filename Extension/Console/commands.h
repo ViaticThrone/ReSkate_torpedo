@@ -27,6 +27,7 @@ void start_memory_trace_from_environment() noexcept;
 void register_item_commands(Commands &);
 void register_trainer_commands(Commands &);
 void register_hall_of_meat_commands(Commands &);
+void register_torpedo_homing_commands(Commands &);
 void register_road_rash_commands(Commands &);
 void register_board_break_commands(Commands &);
 // Runtime adapters. Invoked only by the verified game-thread dispatcher.
