@@ -7,14 +7,22 @@ on:
 jobs:
   windows:
     runs-on: windows-2022
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4
+      # Each step keeps its output and, if it fails, reports the errors and the last lines as
+      # annotations, which can be read through the API without downloading the job log.
       - name: Configure
-        run: cmake --preset vs2022-x64
+        run: |
+          cmake --preset vs2022-x64 *>&1 | Tee-Object -FilePath configure.log
+          if ($LASTEXITCODE -ne 0) { ./.github/report.ps1 configure.log Configure; exit 1 }
       - name: Build
-        run: cmake --build --preset release --parallel 4
+        run: |
+          cmake --build --preset release --parallel 4 *>&1 | Tee-Object -FilePath build.log
+          if ($LASTEXITCODE -ne 0) { ./.github/report.ps1 build.log Build; exit 1 }
       - name: Collect
-        shell: pwsh
         run: |
           New-Item -ItemType Directory -Force out | Out-Null
           foreach ($f in 'ReSkateLauncher.exe','ReSkate.dll') {
