@@ -163,6 +163,8 @@ void on_client_tick() noexcept {
     } catch (...) { /* A lost log line or best is never worth the client tick. */ }
 }
 
+bool slow_motion_running() noexcept { return !state().slow_motion.idle(); }
+
 void set_level(std::string_view level) noexcept {
     auto& s = state();
     if (!s.ready.load(std::memory_order_acquire) || level == s.level) return;

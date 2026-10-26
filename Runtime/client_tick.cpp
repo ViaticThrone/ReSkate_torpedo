@@ -16,6 +16,7 @@
 #include "Extension/HallOfMeat/hall_of_meat.h"
 #include "Extension/RoadRash/road_rash.h"
 #include "Extension/Skater/torpedo_homing.h"
+#include "Extension/Skater/slow_motion_toggle.h"
 #include "Extension/BoardBreak/board_break.h"
 #include "Extension/Skater/camera_observer.h"
 #include "Extension/UI/NativeMenu/native_menu.h"
@@ -817,6 +818,7 @@ void update_model(std::uintptr_t client, TickState& frame) {
     if (r.observer_failed) return; // Keep the bounded restore/telemetry path available after catalog failure.
     dingosdk::hall_of_meat::on_client_tick();
     dingosdk::torpedo_homing::on_client_tick();
+    dingosdk::slow_motion_toggle::on_client_tick(r.base);
     dingosdk::road_rash::on_client_tick(client);
     dingosdk::board_break::on_client_tick(client);
     if (!has_request && now < r.next_model && state == r.previous_state) return;

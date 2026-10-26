@@ -136,6 +136,8 @@ add_library(dingosdk_runtime SHARED
     Extension/Skater/no_bail.cpp
     Extension/Skater/torpedo_homing.cpp
     Extension/Skater/torpedo_homing_commands.cpp
+    Extension/Skater/slow_motion_toggle.cpp
+    Extension/Skater/slow_motion_toggle_commands.cpp
     Extension/Skater/physics_tuning.cpp
     Extension/Multiplayer/Remote/remote_collision.cpp
     Extension/Skater/physics_tuning_model.cpp

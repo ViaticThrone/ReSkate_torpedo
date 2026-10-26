@@ -38,6 +38,8 @@ void set_enabled(bool enabled) noexcept;
 // overlay's model (overlay::HallOfMeatModel), the console directly.
 bool available() noexcept;
 bool enabled() noexcept;
+// Client thread: a break's slow motion holds the game's speed now (Slow Motion leaves it alone until done).
+bool slow_motion_running() noexcept;
 
 // skate.'s skeleton mesh posed as the renderer drew the skater, in world space, with that picture's
 // camera, and how each body was hurt.
