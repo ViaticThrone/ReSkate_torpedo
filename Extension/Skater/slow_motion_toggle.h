@@ -8,7 +8,11 @@
 // gives everything back when it ends; so, like that one, it never runs in a multiplayer session (the
 // local simulation must keep the others' pace) and a session that starts while it runs ends it.
 //
-// The button is read only while skating: not while the game's own menus are up (the pause menu takes
+// Nail the Trick, as in Tony Hawk's Project 8: clicking both sticks in at once while in the air on the
+// board slows the game further (0.2x unless set otherwise) until the skater lands, bails or leaves the
+// board, or both sticks are clicked again.
+//
+// The buttons are read only while skating: not while the game's own menus are up (the pause menu takes
 // d-pad down for itself), nor while ReSkate's menu has the input. The console's `slowmo 0|1` works anywhere.
 namespace dingosdk::slow_motion_toggle {
 // The speed slow motion runs at, 0.05 to 0.95 (default 0.3).
@@ -17,6 +21,13 @@ float speed() noexcept;
 // Whether d-pad down toggles it (default on).
 void set_button(bool enabled) noexcept;
 bool button() noexcept;
+// The trick slow motion's speed (0.05 to 0.95, default 0.2), and whether both sticks start it (default on).
+void set_trick_speed(float speed) noexcept;
+float trick_speed() noexcept;
+void set_trick_button(bool enabled) noexcept;
+bool trick_button() noexcept;
+// The trick slow motion holds the game's speed now.
+bool trick_active() noexcept;
 // Asks for slow motion on or off; the client tick applies it.
 void set_active(bool active) noexcept;
 bool active() noexcept;
